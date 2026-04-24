@@ -5,7 +5,7 @@ import { get, cloneDeep } from 'lodash';
 import { runCollectionFolder, cancelRunnerExecution, mountCollection, updateRunnerConfiguration } from 'providers/ReduxStore/slices/collections/actions';
 import { resetCollectionRunner } from 'providers/ReduxStore/slices/collections';
 import { findItemInCollection, getTotalRequestCountInCollection, areItemsLoading } from 'utils/collections';
-import { IconRefresh, IconCircleCheck, IconCircleX, IconCircleOff, IconCheck, IconX, IconRun, IconExternalLink } from '@tabler/icons';
+import { IconRefresh, IconCircleCheck, IconCircleX, IconCircleOff, IconCheck, IconX, IconRun, IconExternalLink, IconChevronDown, IconChevronRight } from '@tabler/icons';
 import ResponsePane from './ResponsePane';
 import StyledWrapper from './StyledWrapper';
 import RunnerTags from './RunnerTags/index';
@@ -81,11 +81,50 @@ export default function RunnerResults({ collection }) {
   const [delay, setDelay] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedRequestItems, setSelectedRequestItems] = useState([]);
+  const [expandedItems, setExpandedItems] = useState({});
   const isReRunningRef = useRef(false);
   // ref for the runner output body
   const runnerBodyRef = useRef();
 
   const collectionCopy = cloneDeep(collection);
+
+  const isItemExpanded = (uid) => expandedItems[uid] === true;
+  const toggleItemExpanded = (uid) => {
+    setExpandedItems((prev) => ({
+      ...prev,
+      [uid]: !prev[uid]
+    }));
+  };
+  const getItemDetailCount = (item) => {
+    return (
+      (item.preRequestTestResults?.length || 0)
+      + (item.postResponseTestResults?.length || 0)
+      + (item.testResults?.length || 0)
+      + (item.assertionResults?.length || 0)
+    );
+  };
+  const expandAll = () => {
+    const expanded = {};
+    filteredItems.forEach((item) => {
+      if (getItemDetailCount(item) > 0) {
+        expanded[item.uid] = true;
+      }
+    });
+    setExpandedItems(expanded);
+  };
+  const collapseAll = () => setExpandedItems({});
+  const showFailures = () => {
+    const expanded = {};
+    filteredItems.forEach((item) => {
+      if (anyTestFailed(item) && getItemDetailCount(item) > 0) {
+        expanded[item.uid] = true;
+      }
+    });
+    setExpandedItems((prev) => ({
+      ...prev,
+      ...expanded
+    }));
+  };
   const runnerInfo = get(collection, 'runnerResult.info', {});
 
   // tags for the collection run
@@ -324,6 +363,17 @@ export default function RunnerResults({ collection }) {
               />
             ))}
           </div>
+          <div className="flex items-center gap-2 mt-2">
+            <Button type="button" size="sm" variant="ghost" onClick={expandAll}>
+              Expand All
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={collapseAll}>
+              Collapse All
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={showFailures}>
+              Show Failures
+            </Button>
+          </div>
         </div>
 
         {runnerInfo.status !== 'ended' && runnerInfo.cancelTokenUid ? (
@@ -390,38 +440,54 @@ export default function RunnerResults({ collection }) {
           {/* Items list */}
           <div className="overflow-y-auto flex-1 " ref={runnerBodyRef}>
             {filteredItems.map((item) => {
+              const detailCount = getItemDetailCount(item);
+              const sectionExpanded = isItemExpanded(item.uid);
               return (
                 <div key={item.uid}>
                   <div className="item-path mt-2" data-testid="runner-result-item">
-                    <div className="flex items-center">
-                      <span>
-                        {allTestsPassed(item)
-                          ? <IconCircleCheck className="test-success" size={20} strokeWidth={1.5} />
-                          : null}
-                        {item.status === 'skipped'
-                          ? <IconCircleOff className="skipped-request" size={20} strokeWidth={1.5} />
-                          : null}
-                        {anyTestFailed(item)
-                          ? <IconCircleX className="test-failure" size={20} strokeWidth={1.5} />
-                          : null}
-                      </span>
-                      <span
-                        className={`mr-1 ml-2 ${item.status == 'skipped' ? 'skipped-request' : anyTestFailed(item) ? 'danger' : ''}`}
-                      >
-                        {item.displayName}
-                      </span>
-                      {item.status !== 'error' && item.status !== 'skipped' && item.status !== 'completed' ? (
-                        <IconRefresh className="animate-spin ml-1" size={18} strokeWidth={1.5} />
-                      ) : item.responseReceived?.status ? (
-                        <span className="text-xs link cursor-pointer" onClick={() => setSelectedItem(item)}>
-                          <span className="mr-1">{item.responseReceived?.status}</span>
-                          -&nbsp;
-                          <span>{item.responseReceived?.statusText}</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <span>
+                          {allTestsPassed(item)
+                            ? <IconCircleCheck className="test-success" size={20} strokeWidth={1.5} />
+                            : null}
+                          {item.status === 'skipped'
+                            ? <IconCircleOff className="skipped-request" size={20} strokeWidth={1.5} />
+                            : null}
+                          {anyTestFailed(item)
+                            ? <IconCircleX className="test-failure" size={20} strokeWidth={1.5} />
+                            : null}
                         </span>
-                      ) : (
-                        <span className="danger text-xs cursor-pointer" onClick={() => setSelectedItem(item)}>
-                          (request failed)
+                        <span
+                          className={`mr-1 ml-2 ${item.status == 'skipped' ? 'skipped-request' : anyTestFailed(item) ? 'danger' : ''}`}
+                        >
+                          {item.displayName}
                         </span>
+                        {item.status !== 'error' && item.status !== 'skipped' && item.status !== 'completed' ? (
+                          <IconRefresh className="animate-spin ml-1" size={18} strokeWidth={1.5} />
+                        ) : item.responseReceived?.status ? (
+                          <span className="text-xs link cursor-pointer" onClick={() => setSelectedItem(item)}>
+                            <span className="mr-1">{item.responseReceived?.status}</span>
+                            -&nbsp;
+                            <span>{item.responseReceived?.statusText}</span>
+                          </span>
+                        ) : (
+                          <span className="danger text-xs cursor-pointer" onClick={() => setSelectedItem(item)}>
+                            (request failed)
+                          </span>
+                        )}
+                      </div>
+                      {detailCount > 0 && (
+                        <button
+                          type="button"
+                          className="text-xs link ml-2 flex items-center gap-1"
+                          onClick={() => toggleItemExpanded(item.uid)}
+                        >
+                          {sectionExpanded ? 'Hide details' : `Show details (${detailCount})`}
+                          {sectionExpanded
+                            ? <IconChevronDown size={16} strokeWidth={2} />
+                            : <IconChevronRight size={16} strokeWidth={2} />}
+                        </button>
                       )}
                     </div>
                     {areTagsAdded && item?.tags?.length > 0 && (
@@ -431,86 +497,88 @@ export default function RunnerResults({ collection }) {
                     )}
                     {item.status == 'error' ? <div className="error-message pl-8 pt-2 text-xs">{item.error}</div> : null}
 
-                    <ul className="pl-8">
-                      {item.preRequestTestResults
-                        ? filterTestResults(item.preRequestTestResults).map((result) => (
-                            <li key={result.uid}>
-                              {result.status === 'pass' ? (
-                                <span className="test-success flex items-center">
-                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                                  {result.description}
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="test-failure flex items-center">
-                                    <IconX size={18} strokeWidth={2} className="mr-2" />
+                    {sectionExpanded ? (
+                      <ul className="pl-8">
+                        {item.preRequestTestResults
+                          ? filterTestResults(item.preRequestTestResults).map((result) => (
+                              <li key={result.uid}>
+                                {result.status === 'pass' ? (
+                                  <span className="test-success flex items-center">
+                                    <IconCheck size={18} strokeWidth={2} className="mr-2" />
                                     {result.description}
                                   </span>
-                                  <span className="error-message pl-8 text-xs">{result.error}</span>
-                                </>
-                              )}
-                            </li>
-                          ))
-                        : null}
-                      {item.postResponseTestResults
-                        ? filterTestResults(item.postResponseTestResults).map((result) => (
-                            <li key={result.uid}>
-                              {result.status === 'pass' ? (
-                                <span className="test-success flex items-center">
-                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                                  {result.description}
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="test-failure flex items-center">
-                                    <IconX size={18} strokeWidth={2} className="mr-2" />
+                                ) : (
+                                  <>
+                                    <span className="test-failure flex items-center">
+                                      <IconX size={18} strokeWidth={2} className="mr-2" />
+                                      {result.description}
+                                    </span>
+                                    <span className="error-message pl-8 text-xs">{result.error}</span>
+                                  </>
+                                )}
+                              </li>
+                            ))
+                          : null}
+                        {item.postResponseTestResults
+                          ? filterTestResults(item.postResponseTestResults).map((result) => (
+                              <li key={result.uid}>
+                                {result.status === 'pass' ? (
+                                  <span className="test-success flex items-center">
+                                    <IconCheck size={18} strokeWidth={2} className="mr-2" />
                                     {result.description}
                                   </span>
-                                  <span className="error-message pl-8 text-xs">{result.error}</span>
-                                </>
-                              )}
-                            </li>
-                          ))
-                        : null}
-                      {item.testResults
-                        ? filterTestResults(item.testResults).map((result) => (
-                            <li key={result.uid}>
-                              {result.status === 'pass' ? (
-                                <span className="test-success flex items-center">
-                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                                  {result.description}
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="test-failure flex items-center">
-                                    <IconX size={18} strokeWidth={2} className="mr-2" />
+                                ) : (
+                                  <>
+                                    <span className="test-failure flex items-center">
+                                      <IconX size={18} strokeWidth={2} className="mr-2" />
+                                      {result.description}
+                                    </span>
+                                    <span className="error-message pl-8 text-xs">{result.error}</span>
+                                  </>
+                                )}
+                              </li>
+                            ))
+                          : null}
+                        {item.testResults
+                          ? filterTestResults(item.testResults).map((result) => (
+                              <li key={result.uid}>
+                                {result.status === 'pass' ? (
+                                  <span className="test-success flex items-center">
+                                    <IconCheck size={18} strokeWidth={2} className="mr-2" />
                                     {result.description}
                                   </span>
-                                  <span className="error-message pl-8 text-xs">{result.error}</span>
-                                </>
-                              )}
-                            </li>
-                          ))
-                        : null}
-                      {filterTestResults(item.assertionResults).map((result) => (
-                        <li key={result.uid}>
-                          {result.status === 'pass' ? (
-                            <span className="test-success flex items-center">
-                              <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                              {result.lhsExpr}: {result.rhsExpr}
-                            </span>
-                          ) : (
-                            <>
-                              <span className="test-failure flex items-center">
-                                <IconX size={18} strokeWidth={2} className="mr-2" />
+                                ) : (
+                                  <>
+                                    <span className="test-failure flex items-center">
+                                      <IconX size={18} strokeWidth={2} className="mr-2" />
+                                      {result.description}
+                                    </span>
+                                    <span className="error-message pl-8 text-xs">{result.error}</span>
+                                  </>
+                                )}
+                              </li>
+                            ))
+                          : null}
+                        {filterTestResults(item.assertionResults).map((result) => (
+                          <li key={result.uid}>
+                            {result.status === 'pass' ? (
+                              <span className="test-success flex items-center">
+                                <IconCheck size={18} strokeWidth={2} className="mr-2" />
                                 {result.lhsExpr}: {result.rhsExpr}
                               </span>
-                              <span className="error-message pl-8 text-xs">{result.error}</span>
-                            </>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                            ) : (
+                              <>
+                                <span className="test-failure flex items-center">
+                                  <IconX size={18} strokeWidth={2} className="mr-2" />
+                                  {result.lhsExpr}: {result.rhsExpr}
+                                </span>
+                                <span className="error-message pl-8 text-xs">{result.error}</span>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 </div>
               );
